@@ -31,7 +31,11 @@ def create_app(config: AppConfig, bridge: SendSpinAirPlayBridge) -> web.Applicat
 async def handle_index(request: web.Request) -> web.Response:
     config: AppConfig = request.app["config"]
     bridge: SendSpinAirPlayBridge = request.app["bridge"]
-    current_targets = {item.ma_player_id: item for item in load_managed_targets()}
+    current_targets = load_managed_targets()
+    targets_by_player_id = {item.ma_player_id: item for item in current_targets}
+    targets_by_logical_key = {
+        item.logical_key: item for item in current_targets if item.logical_key
+    }
     error_text = ""
     try:
         players = await bridge.fetch_players()
@@ -45,9 +49,10 @@ async def handle_index(request: web.Request) -> web.Response:
     summary = bridge.last_summary
     rows: list[str] = []
     for player in sorted(players, key=lambda item: str(item["display_name"]).lower()):
+        logical_key = str(player["logical_key"])
         player_id = str(player["player_id"])
         display_name = str(player["display_name"])
-        existing = current_targets.get(player_id)
+        existing = targets_by_logical_key.get(logical_key) or targets_by_player_id.get(player_id)
         checked = "checked" if existing and existing.enabled else ""
         suggested_name = existing.name if existing else display_name
         badges: list[str] = []
@@ -55,16 +60,25 @@ async def handle_index(request: web.Request) -> web.Response:
             badges.append("group")
         if player["is_sendspin_candidate"]:
             badges.append("sendspin")
+        if int(player["duplicate_count"]) > 1:
+            badges.append(f"deduped {int(player['duplicate_count'])}x")
         badge_text = " ".join(
             f"<span class='badge'>{html.escape(tag)}</span>" for tag in badges
         )
+        duplicate_note = ""
+        alternate_providers = ", ".join(str(item) for item in player["alternate_providers"])
+        if int(player["duplicate_count"]) > 1:
+            duplicate_note = (
+                f"<div class='meta'>Using preferred Music Assistant target. Hidden duplicates: "
+                f"{html.escape(alternate_providers or 'same provider')}</div>"
+            )
         rows.append(
             "<tr>"
-            f"<td data-label='Enable'><input type='checkbox' name='enabled::{html.escape(player_id)}' {checked}></td>"
-            f"<td data-label='Music Assistant player or group' class='player-col'>{html.escape(display_name)}<div class='meta'>{html.escape(player_id)}</div></td>"
+            f"<td data-label='Enable'><input type='checkbox' name='enabled::{html.escape(logical_key)}' {checked}></td>"
+            f"<td data-label='Music Assistant player or group' class='player-col'>{html.escape(display_name)}<div class='meta'>{html.escape(player_id)}</div>{duplicate_note}</td>"
             f"<td data-label='Provider'>{html.escape(str(player['provider']))}</td>"
             f"<td data-label='Tags'>{badge_text}</td>"
-            f"<td data-label='AirPlay target name'><input type='text' name='name::{html.escape(player_id)}' value='{html.escape(suggested_name)}'></td>"
+            f"<td data-label='AirPlay target name'><input type='text' name='name::{html.escape(logical_key)}' value='{html.escape(suggested_name)}'></td>"
             "</tr>"
         )
 
@@ -336,7 +350,7 @@ async def handle_index(request: web.Request) -> web.Response:
     </form>
     <form method="post" action="sync" class="toolbar">
       <button type="submit" class="secondary">Run sync now</button>
-    </div>
+    </form>
   </div>
 </body>
 </html>"""
@@ -350,24 +364,27 @@ async def handle_save(request: web.Request) -> web.Response:
         players = await bridge.fetch_players()
     except Exception as err:
         LOGGER.exception("Unable to save targets because players could not be loaded: %s", err)
-        return web.HTTPFound("/")
+        return web.HTTPFound("./")
 
-    player_ids = {str(item["player_id"]) for item in players}
+    players_by_key = {str(item["logical_key"]): item for item in players}
     data = await request.post()
     targets: list[AdvertisedTarget] = []
-    for player_id in sorted(player_ids):
-        enabled = data.get(f"enabled::{player_id}") == "on"
+    for logical_key in sorted(players_by_key):
+        enabled = data.get(f"enabled::{logical_key}") == "on"
         if not enabled:
             continue
-        name = str(data.get(f"name::{player_id}", "")).strip()
+        player = players_by_key[logical_key]
+        player_id = str(player["player_id"])
+        name = str(data.get(f"name::{logical_key}", "")).strip()
         if not name:
-            name = next(
-                str(item["display_name"])
-                for item in players
-                if str(item["player_id"]) == player_id
-            )
+            name = str(player["display_name"])
         targets.append(
-            AdvertisedTarget(name=name, ma_player_id=player_id, enabled=True)
+            AdvertisedTarget(
+                name=name,
+                ma_player_id=player_id,
+                enabled=True,
+                logical_key=logical_key,
+            )
         )
 
     save_managed_targets(targets)

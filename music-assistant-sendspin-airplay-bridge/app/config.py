@@ -15,6 +15,7 @@ class AdvertisedTarget:
     name: str
     ma_player_id: str
     enabled: bool = True
+    logical_key: str | None = None
 
 
 @dataclass(slots=True)
@@ -76,7 +77,12 @@ def load_legacy_option_targets(raw: dict[str, Any]) -> list[AdvertisedTarget]:
         ma_player_id = _require_string(item, "ma_player_id")
         enabled = bool(item.get("enabled", True))
         targets.append(
-            AdvertisedTarget(name=name, ma_player_id=ma_player_id, enabled=enabled)
+            AdvertisedTarget(
+                name=name,
+                ma_player_id=ma_player_id,
+                enabled=enabled,
+                logical_key=_optional_string(item, "logical_key"),
+            )
         )
     return targets
 
@@ -95,7 +101,12 @@ def load_managed_targets(path: Path = MANAGED_TARGETS_PATH) -> list[AdvertisedTa
         ma_player_id = _require_string(item, "ma_player_id")
         enabled = bool(item.get("enabled", True))
         targets.append(
-            AdvertisedTarget(name=name, ma_player_id=ma_player_id, enabled=enabled)
+            AdvertisedTarget(
+                name=name,
+                ma_player_id=ma_player_id,
+                enabled=enabled,
+                logical_key=_optional_string(item, "logical_key"),
+            )
         )
     return targets
 
@@ -109,6 +120,7 @@ def save_managed_targets(
             "name": item.name,
             "ma_player_id": item.ma_player_id,
             "enabled": item.enabled,
+            "logical_key": item.logical_key or "",
         }
         for item in targets
     ]
@@ -123,3 +135,13 @@ def save_runtime_overrides(config: AppConfig, path: Path = OPTIONS_PATH) -> None
     raw["mdns_interface"] = config.mdns_interface or ""
     raw["airplay_backend"] = config.airplay_backend
     path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+
+
+def _optional_string(raw: dict[str, Any], key: str) -> str | None:
+    value = raw.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValueError(f"Option '{key}' must be a string")
+    value = value.strip()
+    return value or None

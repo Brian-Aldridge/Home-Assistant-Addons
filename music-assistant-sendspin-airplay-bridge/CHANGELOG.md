@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.5
+
+- Deduplicated duplicate-looking Music Assistant players in the add-on UI using logical speaker/group targets.
+- Persisted target selections by logical key so mappings survive wrapper player ID changes after reconnects.
+- Preferred stable group and native targets over wrapper players when duplicate display names exist.
+
 ## 0.3.4
 
 - Replaced the placeholder repository branding with cropped project logo assets.
