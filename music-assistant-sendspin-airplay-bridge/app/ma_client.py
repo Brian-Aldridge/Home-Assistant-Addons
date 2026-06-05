@@ -92,14 +92,33 @@ class MusicAssistantClient:
     async def get_provider_configs(self) -> list[dict[str, Any]]:
         for command in ("config/providers", "providers"):
             try:
-                args = {"include_values": True} if command == "config/providers" else None
-                result = await self.command(command, args)
+                result = await self.command(command)
             except Exception as err:
                 LOGGER.debug("Provider query %s failed: %s", command, err)
                 continue
             if isinstance(result, list):
                 return result
         raise RuntimeError("Unable to read provider configuration list from Music Assistant")
+
+    async def get_provider_config_value(
+        self,
+        instance_id: str,
+        key: str,
+        default: Any = None,
+    ) -> Any:
+        try:
+            return await self.command(
+                "config/providers/get_value",
+                {"instance_id": instance_id, "key": key, "default": default},
+            )
+        except Exception as err:
+            LOGGER.debug(
+                "Provider value query failed for instance_id=%s key=%s: %s",
+                instance_id,
+                key,
+                err,
+            )
+            return default
 
     async def save_provider_config(
         self,

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.14
+
+- Added per-instance cleanup logging so failed AirPlay receiver removals include the exact provider instance ID.
+- Bulk cleanup now continues past broken entries instead of aborting on the first `500` response from Music Assistant.
+
+## 0.3.13
+
+- Fixed AirPlay receiver inventory to fetch actual configured provider values instead of config-entry definitions.
+- Fixed receiver rows to show real AirPlay names and Music Assistant player IDs.
+- Updated cleanup matching to use hydrated provider values from Music Assistant's config value API.
+
 ## 0.3.12
 
 - Fixed Music Assistant provider inventory fetching to request provider config values.

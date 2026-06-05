@@ -66,7 +66,7 @@ class SendSpinAirPlayBridge:
                 )
 
             players = [normalize_player(item) for item in await client.get_players()]
-            provider_configs = await client.get_provider_configs()
+            provider_configs = await self._get_airplay_provider_configs(client)
             choices = self._build_player_choices(players)
 
             player_index = {player.player_id: player for player in players}
@@ -147,7 +147,7 @@ class SendSpinAirPlayBridge:
                     self._summarize_provider_result(save_result),
                 )
 
-                refreshed_provider_configs = await client.get_provider_configs()
+                refreshed_provider_configs = await self._get_airplay_provider_configs(client)
                 provider_configs = refreshed_provider_configs
                 refreshed_match = match_existing_provider(resolved_target, refreshed_provider_configs)
                 if refreshed_match.instance_id:
@@ -221,14 +221,8 @@ class SendSpinAirPlayBridge:
         ) as client:
             await client.probe_websocket()
             players = [normalize_player(item) for item in await client.get_players()]
-            provider_configs = await client.get_provider_configs()
+            provider_configs = await self._get_airplay_provider_configs(client)
             choices = self._build_player_choices(players)
-            airplay_providers = [
-                item
-                for item in provider_configs
-                if str(item.get("provider_domain") or item.get("domain") or "")
-                == AIRPLAY_PROVIDER_DOMAIN
-            ]
             player_index = {player.player_id: player for player in players}
             choice_index = {choice.logical_key: choice for choice in choices}
 
@@ -268,7 +262,7 @@ class SendSpinAirPlayBridge:
                     }
                 )
 
-            receiver_rows = self._build_receiver_rows(airplay_providers, choices, targets)
+            receiver_rows = self._build_receiver_rows(provider_configs, choices, targets)
             return {
                 "players": choice_rows,
                 "targets": target_rows,
@@ -287,15 +281,9 @@ class SendSpinAirPlayBridge:
         ) as client:
             await client.probe_websocket()
             players = [normalize_player(item) for item in await client.get_players()]
-            provider_configs = await client.get_provider_configs()
+            provider_configs = await self._get_airplay_provider_configs(client)
             choices = self._build_player_choices(players)
-            airplay_providers = [
-                item
-                for item in provider_configs
-                if str(item.get("provider_domain") or item.get("domain") or "")
-                == AIRPLAY_PROVIDER_DOMAIN
-            ]
-            receiver_rows = self._build_receiver_rows(airplay_providers, choices, targets)
+            receiver_rows = self._build_receiver_rows(provider_configs, choices, targets)
             cleanup_candidates = {
                 str(row["instance_id"]): row
                 for row in receiver_rows
@@ -313,8 +301,18 @@ class SendSpinAirPlayBridge:
                 if instance_id not in cleanup_candidates:
                     skipped.append(instance_id)
                     continue
-                await client.remove_provider_config(instance_id)
-                removed.append(instance_id)
+                try:
+                    LOGGER.info("Attempting cleanup of AirPlay receiver instance_id=%s", instance_id)
+                    await client.remove_provider_config(instance_id)
+                    removed.append(instance_id)
+                    LOGGER.info("Cleanup succeeded for AirPlay receiver instance_id=%s", instance_id)
+                except Exception as err:
+                    LOGGER.exception(
+                        "Cleanup failed for AirPlay receiver instance_id=%s: %s",
+                        instance_id,
+                        err,
+                    )
+                    skipped.append(instance_id)
 
             return {"removed": removed, "skipped": skipped}
 
@@ -341,14 +339,8 @@ class SendSpinAirPlayBridge:
         ) as client:
             await client.probe_websocket()
             players = [normalize_player(item) for item in await client.get_players()]
-            provider_configs = await client.get_provider_configs()
+            provider_configs = await self._get_airplay_provider_configs(client)
             choices = self._build_player_choices(players)
-            airplay_providers = [
-                item
-                for item in provider_configs
-                if str(item.get("provider_domain") or item.get("domain") or "")
-                == AIRPLAY_PROVIDER_DOMAIN
-            ]
             player_index = {player.player_id: player for player in players}
             choice_index = {choice.logical_key: choice for choice in choices}
 
@@ -356,17 +348,31 @@ class SendSpinAirPlayBridge:
             skipped: list[str] = []
             for target in removed_targets:
                 resolved_target = self._resolve_target(target, choices, player_index, choice_index)
-                match = match_existing_provider(resolved_target, airplay_providers)
+                match = match_existing_provider(resolved_target, provider_configs)
                 if not match.instance_id:
                     skipped.append(target.name)
                     continue
-                await client.remove_provider_config(match.instance_id)
-                removed.append(target.name)
-                airplay_providers = [
-                    item
-                    for item in airplay_providers
-                    if str(item.get("instance_id") or "") != match.instance_id
-                ]
+                try:
+                    LOGGER.info(
+                        "Removing disabled target receiver name=%s instance_id=%s",
+                        target.name,
+                        match.instance_id,
+                    )
+                    await client.remove_provider_config(match.instance_id)
+                    removed.append(target.name)
+                    provider_configs = [
+                        item
+                        for item in provider_configs
+                        if str(item.get("instance_id") or "") != match.instance_id
+                    ]
+                except Exception as err:
+                    LOGGER.exception(
+                        "Failed removing disabled target receiver name=%s instance_id=%s: %s",
+                        target.name,
+                        match.instance_id,
+                        err,
+                    )
+                    skipped.append(target.name)
 
             return {"removed": removed, "skipped": skipped}
 
@@ -637,3 +643,36 @@ class SendSpinAirPlayBridge:
 
         rows.sort(key=lambda item: (not bool(item["selected"]), not bool(item["managed"]), str(item["airplay_name"]).lower()))
         return rows
+
+    async def _get_airplay_provider_configs(
+        self,
+        client: MusicAssistantClient,
+    ) -> list[dict[str, object]]:
+        provider_configs = await client.get_provider_configs()
+        result: list[dict[str, object]] = []
+        for provider in provider_configs:
+            provider_domain = str(
+                provider.get("provider_domain") or provider.get("domain") or ""
+            )
+            if provider_domain != AIRPLAY_PROVIDER_DOMAIN:
+                continue
+            instance_id = str(provider.get("instance_id") or "")
+            if not instance_id:
+                continue
+            airplay_name = await client.get_provider_config_value(instance_id, "airplay_name", "")
+            mass_player_id = await client.get_provider_config_value(instance_id, "mass_player_id", "")
+            enabled = await client.get_provider_config_value(instance_id, "enabled", True)
+            result.append(
+                {
+                    "instance_id": instance_id,
+                    "domain": provider_domain,
+                    "provider_domain": provider_domain,
+                    "name": str(provider.get("name") or ""),
+                    "values": {
+                        "airplay_name": airplay_name,
+                        "mass_player_id": mass_player_id,
+                        "enabled": enabled,
+                    },
+                }
+            )
+        return result
