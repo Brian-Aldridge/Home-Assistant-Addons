@@ -1,0 +1,40 @@
+name: "Music Assistant SendSpin AirPlay Bridge"
+version: "0.1.0"
+slug: "music_assistant_sendspin_airplay_bridge"
+description: "Manage Music Assistant AirPlay Receiver targets for selected SendSpin players and groups."
+url: "https://example.invalid/music-assistant-sendspin-airplay-bridge"
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+startup: services
+boot: auto
+init: false
+host_network: false
+map:
+  - addon_config:rw
+options:
+  music_assistant_url: "http://homeassistant.local:8095"
+  music_assistant_token: ""
+  advertised_targets:
+    - name: "Kitchen SendSpin"
+      ma_player_id: "kitchen"
+      enabled: true
+    - name: "Whole House SendSpin"
+      ma_player_id: "sendspin_group_whole_house"
+      enabled: true
+  log_level: "info"
+  mdns_interface: ""
+  airplay_backend: "shairport-sync"
+schema:
+  music_assistant_url: url
+  music_assistant_token: password?
+  advertised_targets:
+    - name: str
+      ma_player_id: str
+      enabled: bool
+  log_level: list(trace|debug|info|notice|warning|error|fatal)
+  mdns_interface: str?
+  airplay_backend: list(shairport-sync)
