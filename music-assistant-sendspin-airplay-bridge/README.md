@@ -2,6 +2,8 @@
 
 This Home Assistant add-on manages Music Assistant AirPlay Receiver targets for selected Music Assistant players or groups, with a focus on SendSpin-backed targets.
 
+For Home Assistant add-on store presentation, see [`DOCS.md`](./DOCS.md).
+
 The runtime design is deliberate: current Music Assistant already includes an official `airplay_receiver` plugin backed by `shairport-sync`, and that plugin can expose any MA player, including groups, as an AirPlay target. This add-on uses the Music Assistant API to inspect players, validate configured targets, and create or update the corresponding AirPlay Receiver provider instances.
 
 ## What It Does

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.4
+
+- Replaced the placeholder repository branding with cropped project logo assets.
+- Updated `icon.png` to a square symbol-only version for better add-on store presentation.
+- Updated `logo.png` to a tightly cropped full lockup version.
+
+## 0.3.3
+
+- Added Home Assistant add-on store documentation in `DOCS.md`.
+- Added English configuration translations for better field labels and descriptions.
+- Normalized repository metadata to match standard Home Assistant add-on repository conventions.
+- Removed placeholder example URLs from repository and add-on metadata.
+
 ## 0.3.2
 
 - Restyled the ingress UI to follow Home Assistant theme colors and card patterns.

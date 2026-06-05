@@ -1,0 +1,16 @@
+configuration:
+  music_assistant_url:
+    name: Music Assistant URL
+    description: Base URL of the Music Assistant server, including the port if required.
+  music_assistant_token:
+    name: Music Assistant token
+    description: Optional long-lived Music Assistant access token for API authentication.
+  log_level:
+    name: Log level
+    description: Controls how much detail the add-on writes to its logs.
+  mdns_interface:
+    name: mDNS interface
+    description: Optional network interface override for multicast DNS and receiver advertisement.
+  airplay_backend:
+    name: AirPlay backend
+    description: Receiver backend implementation used by this add-on.
