@@ -38,18 +38,13 @@ Google Cast receiver emulation is legally and technically different from AirPlay
 
 ## Configuration
 
+The add-on options now only handle connection settings. Speaker and group selection is managed from the add-on UI after startup.
+
 Example:
 
 ```yaml
 music_assistant_url: "http://homeassistant.local:8095"
 music_assistant_token: ""
-advertised_targets:
-  - name: "Kitchen SendSpin"
-    ma_player_id: "kitchen"
-    enabled: true
-  - name: "Whole House SendSpin"
-    ma_player_id: "sendspin_group_whole_house"
-    enabled: true
 log_level: "info"
 mdns_interface: ""
 airplay_backend: "shairport-sync"
@@ -65,15 +60,16 @@ Set `music_assistant_url` to the base HTTP URL of your Music Assistant server, f
 
 If your Music Assistant server requires authentication for API access, set `music_assistant_token`.
 
-## Mapping AirPlay Names To MA Players Or Groups
+## Managing Speakers And Groups
 
-Each `advertised_targets` entry becomes one AirPlay Receiver provider instance in Music Assistant:
+After the add-on starts, open its built-in UI from Home Assistant. The page queries Music Assistant and shows:
 
-- `name`: the AirPlay-visible receiver name.
-- `ma_player_id`: the target Music Assistant player or group id.
-- `enabled`: whether the mapping should remain enabled.
+- all discovered players and groups;
+- whether each target looks like SendSpin;
+- a checkbox to enable it;
+- an editable AirPlay target name field.
 
-For groups, use the Music Assistant group player id. That preserves grouping at the Music Assistant layer instead of attempting one stream per speaker.
+That avoids manual `player_id` entry. For grouped playback, select the Music Assistant group row directly so playback stays grouped at the MA layer.
 
 ## Installation
 
@@ -82,8 +78,11 @@ For groups, use the Music Assistant group player id. That preserves grouping at 
 3. In Music Assistant, install or enable the official AirPlay Receiver plugin.
 4. Add this repository to Home Assistant add-ons if needed.
 5. Install the add-on.
-6. Configure `music_assistant_url`, optional `music_assistant_token`, and your target mappings.
-7. Start the add-on and inspect the logs.
+6. Configure `music_assistant_url` and optional `music_assistant_token`.
+7. Start the add-on.
+8. Open the add-on UI.
+9. Select speakers/groups from the list, set names, and save.
+10. Run sync and inspect logs if needed.
 
 ## Troubleshooting
 

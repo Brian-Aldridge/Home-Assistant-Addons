@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0
+
+- Added an add-on management UI for selecting Music Assistant players and groups.
+- Removed manual `advertised_targets` editing from the add-on options form.
+- Added managed target persistence in `/data/managed_targets.json`.
+- Added manual sync action from the add-on UI.
+
 ## 0.1.0
 
 - Initial Home Assistant add-on scaffold.

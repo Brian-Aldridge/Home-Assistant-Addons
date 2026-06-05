@@ -23,6 +23,7 @@ class SyncSummary:
 class SendSpinAirPlayBridge:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
+        self._last_summary: SyncSummary | None = None
 
     async def run_sync(self) -> SyncSummary:
         async with MusicAssistantClient(
@@ -122,10 +123,34 @@ class SendSpinAirPlayBridge:
                     target.ma_player_id,
                 )
 
-            return SyncSummary(
+            summary = SyncSummary(
                 configured_targets=len(self.config.advertised_targets),
                 enabled_targets=enabled_targets,
                 sendspin_candidates=sendspin_candidates,
                 groups_seen=groups_seen,
                 created_or_updated=updated,
             )
+            self._last_summary = summary
+            return summary
+
+    async def fetch_players(self) -> list[dict[str, object]]:
+        async with MusicAssistantClient(
+            self.config.music_assistant_url,
+            self.config.music_assistant_token,
+        ) as client:
+            await client.probe_websocket()
+            players = [normalize_player(item) for item in await client.get_players()]
+            return [
+                {
+                    "player_id": player.player_id,
+                    "display_name": player.display_name,
+                    "provider": player.provider or "",
+                    "is_group": player.is_group,
+                    "is_sendspin_candidate": player.is_sendspin_candidate,
+                }
+                for player in players
+            ]
+
+    @property
+    def last_summary(self) -> SyncSummary | None:
+        return self._last_summary
