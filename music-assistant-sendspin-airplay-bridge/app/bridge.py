@@ -27,6 +27,7 @@ class PlayerChoice:
     logical_key: str
     player_id: str
     display_name: str
+    effective_name: str
     provider: str
     is_group: bool
     is_sendspin_candidate: bool
@@ -198,6 +199,7 @@ class SendSpinAirPlayBridge:
                     "logical_key": choice.logical_key,
                     "player_id": choice.player_id,
                     "display_name": choice.display_name,
+                    "effective_name": choice.effective_name,
                     "provider": choice.provider,
                     "is_group": choice.is_group,
                     "is_sendspin_candidate": choice.is_sendspin_candidate,
@@ -234,6 +236,7 @@ class SendSpinAirPlayBridge:
                     "logical_key": choice.logical_key,
                     "player_id": choice.player_id,
                     "display_name": choice.display_name,
+                    "effective_name": choice.effective_name,
                     "provider": choice.provider,
                     "is_group": choice.is_group,
                     "is_sendspin_candidate": choice.is_sendspin_candidate,
@@ -313,6 +316,57 @@ class SendSpinAirPlayBridge:
 
             return {"removed": removed, "skipped": skipped}
 
+    async def remove_disabled_targets(
+        self,
+        previous_targets: list[AdvertisedTarget],
+        current_targets: list[AdvertisedTarget],
+    ) -> dict[str, list[str]]:
+        current_keys = {
+            (target.logical_key or "", target.ma_player_id, target.name)
+            for target in current_targets
+        }
+        removed_targets = [
+            target
+            for target in previous_targets
+            if (target.logical_key or "", target.ma_player_id, target.name) not in current_keys
+        ]
+        if not removed_targets:
+            return {"removed": [], "skipped": []}
+
+        async with MusicAssistantClient(
+            self.config.music_assistant_url,
+            self.config.music_assistant_token,
+        ) as client:
+            await client.probe_websocket()
+            players = [normalize_player(item) for item in await client.get_players()]
+            provider_configs = await client.get_provider_configs()
+            choices = self._build_player_choices(players)
+            airplay_providers = [
+                item
+                for item in provider_configs
+                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+            ]
+            player_index = {player.player_id: player for player in players}
+            choice_index = {choice.logical_key: choice for choice in choices}
+
+            removed: list[str] = []
+            skipped: list[str] = []
+            for target in removed_targets:
+                resolved_target = self._resolve_target(target, choices, player_index, choice_index)
+                match = match_existing_provider(resolved_target, airplay_providers)
+                if not match.instance_id:
+                    skipped.append(target.name)
+                    continue
+                await client.remove_provider_config(match.instance_id)
+                removed.append(target.name)
+                airplay_providers = [
+                    item
+                    for item in airplay_providers
+                    if str(item.get("instance_id") or "") != match.instance_id
+                ]
+
+            return {"removed": removed, "skipped": skipped}
+
     async def fetch_mdns_interfaces(self) -> list[dict[str, str]]:
         interfaces: list[dict[str, str]] = [{"name": "Automatic", "value": ""}]
         seen: set[str] = set()
@@ -328,35 +382,37 @@ class SendSpinAirPlayBridge:
         return self._last_summary
 
     def _build_player_choices(self, players: list) -> list[PlayerChoice]:
-        clusters: dict[str, list] = {}
-        for player in players:
-            cluster_key = self._cluster_key(player.display_name)
-            clusters.setdefault(cluster_key, []).append(player)
-
         choices: list[PlayerChoice] = []
-        for cluster_players in clusters.values():
-            sorted_players = sorted(cluster_players, key=self._player_priority_key)
-            primary = sorted_players[0]
-            logical_key = self._logical_key_for_choice(primary, cluster_players)
-            alternates = [item.player_id for item in sorted_players[1:]]
-            alternate_providers = [item.provider or "unknown" for item in sorted_players[1:]]
-            choices.append(
-                PlayerChoice(
-                    logical_key=logical_key,
-                    player_id=primary.player_id,
-                    display_name=primary.display_name,
-                    provider=primary.provider or "unknown",
-                    is_group=primary.is_group,
-                    is_sendspin_candidate=any(
-                        item.is_sendspin_candidate for item in cluster_players
-                    ),
-                    duplicate_count=len(cluster_players),
-                    alternate_player_ids=alternates,
-                    alternate_providers=alternate_providers,
-                    preferred_reason=self._preferred_reason(primary),
+        buckets: dict[str, list] = {}
+        for player in players:
+            buckets.setdefault(self._normalize_name(player.display_name), []).append(player)
+
+        for bucket_players in buckets.values():
+            for cluster_players in self._split_name_bucket(bucket_players):
+                sorted_players = sorted(cluster_players, key=self._player_priority_key)
+                primary = sorted_players[0]
+                logical_key = self._logical_key_for_choice(primary, cluster_players)
+                alternates = [item.player_id for item in sorted_players[1:]]
+                alternate_providers = [item.provider or "unknown" for item in sorted_players[1:]]
+                choices.append(
+                    PlayerChoice(
+                        logical_key=logical_key,
+                        player_id=primary.player_id,
+                        display_name=primary.display_name,
+                        effective_name=primary.display_name,
+                        provider=primary.provider or "unknown",
+                        is_group=primary.is_group,
+                        is_sendspin_candidate=any(
+                            item.is_sendspin_candidate for item in cluster_players
+                        ),
+                        duplicate_count=len(cluster_players),
+                        alternate_player_ids=alternates,
+                        alternate_providers=alternate_providers,
+                        preferred_reason=self._preferred_reason(primary),
+                    )
                 )
-            )
-        choices.sort(key=lambda item: item.display_name.lower())
+        self._assign_effective_names(choices)
+        choices.sort(key=lambda item: item.effective_name.lower())
         return choices
 
     def _resolve_target(
@@ -425,11 +481,48 @@ class SendSpinAirPlayBridge:
 
         return target
 
-    def _cluster_key(self, display_name: str) -> str:
-        return f"name:{self._normalize_name(display_name)}"
+    def _split_name_bucket(self, players: list) -> list[list]:
+        if len(players) <= 1:
+            return [players]
+
+        wrappers = [
+            player for player in players if (player.provider or "").lower() == "universal_player"
+        ]
+        non_wrappers = [
+            player for player in players if (player.provider or "").lower() != "universal_player"
+        ]
+
+        if len(non_wrappers) == 1:
+            return [[non_wrappers[0], *wrappers]]
+
+        return [[player] for player in players]
+
+    def _assign_effective_names(self, choices: list[PlayerChoice]) -> None:
+        grouped: dict[str, list[PlayerChoice]] = {}
+        for choice in choices:
+            grouped.setdefault(self._normalize_name(choice.display_name), []).append(choice)
+
+        for choice_group in grouped.values():
+            if len(choice_group) == 1:
+                choice_group[0].effective_name = choice_group[0].display_name
+                continue
+            for choice in choice_group:
+                choice.effective_name = f"{choice.display_name} ({self._choice_label_suffix(choice)})"
+
+    def _choice_label_suffix(self, choice: PlayerChoice) -> str:
+        if choice.is_group:
+            return "group"
+        provider = choice.provider.lower()
+        if provider == "hass_players":
+            return "HA"
+        if provider == "universal_player":
+            return choice.player_id[-4:]
+        return provider.replace("_", " ")
 
     def _logical_key_for_choice(self, primary, cluster_players: list) -> str:
         normalized_name = self._normalize_name(primary.display_name)
+        if len(cluster_players) == 1:
+            return f"speaker:{normalized_name}:{primary.player_id.lower()}"
         if any(player.is_group for player in cluster_players):
             return f"group:{normalized_name}"
         return f"speaker:{normalized_name}"

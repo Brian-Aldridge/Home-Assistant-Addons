@@ -38,6 +38,13 @@ That makes a controller add-on more defensible than reimplementing RAOP routing 
 
 Google Cast receiver emulation is legally and technically different from AirPlay. Receiver behavior is not fully open in the same way, and there is no equivalent clean, redistributable, open-source path comparable to `shairport-sync` plus Music Assistant's existing AirPlay Receiver provider. This v1 stays on the open path.
 
+Music Assistant's current supported model aligns with this boundary:
+
+- AirPlay receiver support exists as an official Music Assistant plugin.
+- Equivalent native Chromecast receiver support does not.
+
+For that reason, this add-on is intentionally scoped to AirPlay receiver management and does not attempt to emulate Google Cast receiver behavior.
+
 ## Configuration
 
 The add-on options now only handle connection settings. Speaker and group selection is managed from the add-on UI after startup.

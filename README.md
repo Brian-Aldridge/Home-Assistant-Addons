@@ -6,6 +6,8 @@ This repository is a custom Home Assistant add-on repository containing one add-
 
 The add-on manages Music Assistant AirPlay Receiver targets for selected SendSpin players and SendSpin-backed groups.
 
+It is intentionally an AirPlay-focused repository. It does not provide Chromecast / Google Cast receiver emulation.
+
 ## Repository Structure
 
 - `repository.yaml`: repository metadata for Home Assistant.

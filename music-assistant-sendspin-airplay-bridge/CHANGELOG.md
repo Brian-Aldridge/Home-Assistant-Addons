@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.11
+
+- Disabling a target now removes its managed AirPlay receiver instead of leaving a stale receiver behind.
+- Wired disabled-target cleanup into the save flow with status feedback in the UI.
+
+## 0.3.10
+
+- Fixed same-name speaker handling so distinct speakers are no longer collapsed just because they share a display name.
+- Added disambiguated target labels and default AirPlay names when multiple distinct players share the same name.
+- Kept wrapper deduplication only for the specific universal-player-to-real-target case.
+
+## 0.3.9
+
+- Clarified in repository and add-on documentation that this project intentionally supports AirPlay receiver management only.
+- Added explicit explanation for why Chromecast / Google Cast receiver support is out of scope.
+
 ## 0.3.8
 
 - Added detailed sync diagnostics around AirPlay receiver provider creation and post-save lookup.

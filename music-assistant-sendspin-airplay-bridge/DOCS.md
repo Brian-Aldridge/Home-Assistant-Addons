@@ -43,6 +43,18 @@ After starting the add-on:
 - If Music Assistant shows players as `universal_player`, they can still be selected.
 - For grouped playback, select the Music Assistant group entry instead of the individual child speakers.
 
+## Why Chromecast receiver support is not included
+
+This add-on intentionally supports AirPlay receiver management only.
+
+Reason:
+
+- Music Assistant has an official AirPlay Receiver plugin that can expose Music Assistant players and groups as AirPlay targets.
+- Music Assistant does not offer equivalent supported Google Cast / Chromecast receiver functionality.
+- Music Assistant maintainers have explicitly stated that native Cast receiver support is not feasible in the same way because Cast is closed source.
+
+That makes AirPlay a defensible supported path for this add-on, while Chromecast receiver emulation remains out of scope.
+
 ## Troubleshooting
 
 ### Save or sync returns an error

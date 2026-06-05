@@ -55,13 +55,14 @@ async def handle_index(request: web.Request) -> web.Response:
 
     summary = bridge.last_summary
     rows: list[str] = []
-    for player in sorted(players, key=lambda item: str(item["display_name"]).lower()):
+    for player in sorted(players, key=lambda item: str(item["effective_name"]).lower()):
         logical_key = str(player["logical_key"])
         player_id = str(player["player_id"])
         display_name = str(player["display_name"])
+        effective_name = str(player.get("effective_name") or display_name)
         existing = targets_by_logical_key.get(logical_key) or targets_by_player_id.get(player_id)
         checked = "checked" if existing and existing.enabled else ""
-        suggested_name = existing.name if existing else display_name
+        suggested_name = existing.name if existing else effective_name
         badges: list[str] = []
         if player["is_group"]:
             badges.append("group")
@@ -83,14 +84,14 @@ async def handle_index(request: web.Request) -> web.Response:
             )
         rows.append(
             "<tr class='player-row'"
-            f" data-name='{html.escape(display_name.lower())}'"
+            f" data-name='{html.escape((display_name + ' ' + effective_name).lower())}'"
             f" data-provider='{html.escape(str(player['provider']).lower())}'"
             f" data-selected='{'true' if existing and existing.enabled else 'false'}'"
             f" data-group='{'true' if player['is_group'] else 'false'}'"
             f" data-duplicate='{'true' if int(player['duplicate_count']) > 1 else 'false'}'"
             ">"
             f"<td data-label='Enable'><input type='checkbox' name='enabled::{html.escape(logical_key)}' {checked}></td>"
-            f"<td data-label='Music Assistant player or group' class='player-col'>{html.escape(display_name)}<div class='meta'>{html.escape(player_id)}</div>{duplicate_note}</td>"
+            f"<td data-label='Music Assistant player or group' class='player-col'>{html.escape(effective_name)}<div class='meta'>{html.escape(player_id)}</div>{duplicate_note}</td>"
             f"<td data-label='Provider'>{html.escape(str(player['provider']))}</td>"
             f"<td data-label='Tags'>{badge_text}</td>"
             f"<td data-label='AirPlay target name'><input type='text' name='name::{html.escape(logical_key)}' value='{html.escape(suggested_name)}'></td>"
@@ -642,6 +643,7 @@ async def handle_index(request: web.Request) -> web.Response:
 async def handle_save(request: web.Request) -> web.Response:
     config: AppConfig = request.app["config"]
     bridge: SendSpinAirPlayBridge = request.app["bridge"]
+    previous_targets = load_managed_targets()
     try:
         players = await bridge.fetch_players()
     except Exception as err:
@@ -672,7 +674,23 @@ async def handle_save(request: web.Request) -> web.Response:
     save_managed_targets(targets)
     config.mdns_interface = str(data.get("mdns_interface", "")).strip() or None
     save_runtime_overrides(config)
-    return web.HTTPFound("./")
+    status_parts = ["Target selection saved"]
+    try:
+        cleanup_result = await bridge.remove_disabled_targets(previous_targets, targets)
+        if cleanup_result["removed"]:
+            status_parts.append(
+                f"removed {len(cleanup_result['removed'])} disabled receiver(s)"
+            )
+        if cleanup_result["skipped"]:
+            status_parts.append(
+                f"skipped {len(cleanup_result['skipped'])} target(s) with no receiver to remove"
+            )
+    except Exception as err:
+        LOGGER.exception("Failed removing disabled targets: %s", err)
+        status_parts.append(f"cleanup failed: {err}")
+
+    from urllib.parse import quote
+    return web.HTTPFound(f"./?status={quote('; '.join(status_parts))}")
 
 
 async def handle_sync(request: web.Request) -> web.Response:
