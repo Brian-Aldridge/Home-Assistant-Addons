@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.8
+
+- Added detailed sync diagnostics around AirPlay receiver provider creation and post-save lookup.
+- Improved logging to distinguish provider-save success from receiver lookup/matching failures.
+
 ## 0.3.7
 
 - Added safe cleanup actions for AirPlay receiver instances classified as cleanup candidates.

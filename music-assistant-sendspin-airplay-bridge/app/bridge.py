@@ -129,11 +129,38 @@ class SendSpinAirPlayBridge:
                     )
 
                 match = match_existing_provider(resolved_target, provider_configs)
-                await client.save_provider_config(
+                LOGGER.info(
+                    "Syncing AirPlay target name=%s ma_player_id=%s existing_instance_id=%s",
+                    resolved_target.name,
+                    resolved_target.ma_player_id,
+                    match.instance_id or "new",
+                )
+                save_result = await client.save_provider_config(
                     match.provider_domain,
                     match.values,
                     match.instance_id,
                 )
+                LOGGER.info(
+                    "Provider save result for target '%s': %s",
+                    resolved_target.name,
+                    self._summarize_provider_result(save_result),
+                )
+
+                refreshed_provider_configs = await client.get_provider_configs()
+                provider_configs = refreshed_provider_configs
+                refreshed_match = match_existing_provider(resolved_target, refreshed_provider_configs)
+                if refreshed_match.instance_id:
+                    LOGGER.info(
+                        "Receiver instance resolved after save for target '%s': %s",
+                        resolved_target.name,
+                        refreshed_match.instance_id,
+                    )
+                else:
+                    LOGGER.warning(
+                        "Receiver still missing after save for target '%s'. "
+                        "Music Assistant did not return a matching airplay_receiver instance.",
+                        resolved_target.name,
+                    )
                 updated += 1
 
                 action = "updated" if match.instance_id else "created"
@@ -424,6 +451,19 @@ class SendSpinAirPlayBridge:
     def _normalize_name(self, value: str) -> str:
         normalized = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return normalized or "unnamed"
+
+    def _summarize_provider_result(self, result: object) -> str:
+        if isinstance(result, dict):
+            instance_id = result.get("instance_id") or result.get("id") or ""
+            provider_domain = result.get("provider_domain") or result.get("domain") or ""
+            name = result.get("name") or ""
+            if instance_id or provider_domain or name:
+                return (
+                    f"instance_id={instance_id or '-'} "
+                    f"provider_domain={provider_domain or '-'} "
+                    f"name={name or '-'}"
+                )
+        return str(result)
 
     def _preferred_reason(self, player) -> str:
         provider = (player.provider or "").lower()
