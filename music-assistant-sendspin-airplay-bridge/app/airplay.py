@@ -38,9 +38,16 @@ def normalize_player(player: dict[str, Any]) -> PlayerRecord:
     display_name = str(player.get("display_name") or player_id)
     group_childs = player.get("group_childs") or player.get("group_members") or []
     is_group = bool(player.get("group_player") or group_childs)
-
-    provider_text = f"{provider} {player_id} {display_name}".lower()
-    is_sendspin_candidate = "sendspin" in provider_text or player_id.startswith("spb_")
+    provider_name = str(provider).lower() if provider else ""
+    raw_text = _flatten_text(player)
+    provider_text = f"{provider_name} {player_id} {display_name} {raw_text}".lower()
+    is_sendspin_candidate = _is_sendspin_candidate(
+        provider_name=provider_name,
+        player_id=player_id,
+        display_name=display_name,
+        is_group=is_group,
+        provider_text=provider_text,
+    )
 
     return PlayerRecord(
         player_id=player_id,
@@ -50,6 +57,97 @@ def normalize_player(player: dict[str, Any]) -> PlayerRecord:
         is_sendspin_candidate=is_sendspin_candidate,
         raw=player,
     )
+
+
+def _is_sendspin_candidate(
+    *,
+    provider_name: str,
+    player_id: str,
+    display_name: str,
+    is_group: bool,
+    provider_text: str,
+) -> bool:
+    if is_group or provider_name == "sync_group":
+        return True
+
+    if player_id.startswith("spb_"):
+        return True
+
+    if provider_name in {"hass_players", "universal_player"}:
+        if _looks_like_video_endpoint(player_id, display_name, provider_text):
+            return False
+        return _looks_like_audio_endpoint(player_id, display_name, provider_text)
+
+    if provider_name == "sendspin":
+        if _looks_like_browser_endpoint(player_id, display_name, provider_text):
+            return False
+        return True
+
+    if "sendspin" in provider_text:
+        return not _looks_like_browser_endpoint(player_id, display_name, provider_text)
+
+    return False
+
+
+def _looks_like_audio_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+    tokens = {
+        "speaker",
+        "speakers",
+        "assistant",
+        "soundbar",
+        "audio",
+        "receiver",
+        "amp",
+        "music",
+        "group",
+        "synced",
+    }
+    candidate_text = f"{player_id} {display_name} {provider_text}".lower()
+    return any(token in candidate_text for token in tokens)
+
+
+def _looks_like_video_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+    tokens = {
+        " tv",
+        "_tv",
+        "television",
+        "display",
+        "projector",
+        "roku",
+        "webos",
+    }
+    candidate_text = f" {player_id} {display_name} {provider_text}".lower()
+    return any(token in candidate_text for token in tokens)
+
+
+def _looks_like_browser_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+    tokens = {
+        "pwa",
+        "browser",
+        "edge",
+        "chrome",
+        "firefox",
+        "safari",
+        "webkit",
+        "tab",
+        "window",
+    }
+    candidate_text = f"{player_id} {display_name} {provider_text}".lower()
+    return any(token in candidate_text for token in tokens)
+
+
+def _flatten_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, dict):
+        return " ".join(_flatten_text(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return " ".join(_flatten_text(item) for item in value)
+    return ""
 
 
 def build_provider_values(target: AdvertisedTarget) -> dict[str, Any]:

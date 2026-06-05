@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.16
+
+- Fixed SendSpin target detection so Home Assistant and sync-group speaker targets are classified from speaker/group traits instead of only literal `sendspin` provider text.
+- Reduced false positives from browser and PWA-style SendSpin endpoints when building the selectable target list and sync diagnostics.
+
 ## 0.3.15
 
 - Fixed dashboard rendering after receiver inventory refactors by removing a stale `airplay_providers` reference.
