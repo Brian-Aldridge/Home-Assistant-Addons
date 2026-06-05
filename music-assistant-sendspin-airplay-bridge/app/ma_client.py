@@ -92,7 +92,8 @@ class MusicAssistantClient:
     async def get_provider_configs(self) -> list[dict[str, Any]]:
         for command in ("config/providers", "providers"):
             try:
-                result = await self.command(command)
+                args = {"include_values": True} if command == "config/providers" else None
+                result = await self.command(command, args)
             except Exception as err:
                 LOGGER.debug("Provider query %s failed: %s", command, err)
                 continue

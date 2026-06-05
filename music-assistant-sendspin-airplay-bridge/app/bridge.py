@@ -226,7 +226,8 @@ class SendSpinAirPlayBridge:
             airplay_providers = [
                 item
                 for item in provider_configs
-                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+                if str(item.get("provider_domain") or item.get("domain") or "")
+                == AIRPLAY_PROVIDER_DOMAIN
             ]
             player_index = {player.player_id: player for player in players}
             choice_index = {choice.logical_key: choice for choice in choices}
@@ -291,7 +292,8 @@ class SendSpinAirPlayBridge:
             airplay_providers = [
                 item
                 for item in provider_configs
-                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+                if str(item.get("provider_domain") or item.get("domain") or "")
+                == AIRPLAY_PROVIDER_DOMAIN
             ]
             receiver_rows = self._build_receiver_rows(airplay_providers, choices, targets)
             cleanup_candidates = {
@@ -344,7 +346,8 @@ class SendSpinAirPlayBridge:
             airplay_providers = [
                 item
                 for item in provider_configs
-                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+                if str(item.get("provider_domain") or item.get("domain") or "")
+                == AIRPLAY_PROVIDER_DOMAIN
             ]
             player_index = {player.player_id: player for player in players}
             choice_index = {choice.logical_key: choice for choice in choices}

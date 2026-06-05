@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.12
+
+- Fixed Music Assistant provider inventory fetching to request provider config values.
+- Fixed AirPlay receiver detection to match Music Assistant provider configs using both `domain` and `provider_domain`.
+- This allows stale and broken AirPlay Receiver entries to appear in the receiver inventory and cleanup flow.
+
 ## 0.3.11
 
 - Disabling a target now removes its managed AirPlay receiver instead of leaving a stale receiver behind.

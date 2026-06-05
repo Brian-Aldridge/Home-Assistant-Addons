@@ -66,7 +66,10 @@ def match_existing_provider(
     provider_configs: list[dict[str, Any]],
 ) -> ProviderMatch:
     for provider in provider_configs:
-        if provider.get("provider_domain") != AIRPLAY_PROVIDER_DOMAIN:
+        provider_domain = str(
+            provider.get("provider_domain") or provider.get("domain") or ""
+        )
+        if provider_domain != AIRPLAY_PROVIDER_DOMAIN:
             continue
         values = provider.get("values") or {}
         if values.get("mass_player_id") == target.ma_player_id:
