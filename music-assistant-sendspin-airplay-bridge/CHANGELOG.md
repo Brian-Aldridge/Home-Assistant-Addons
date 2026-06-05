@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.17
+
+- Tightened SendSpin target detection to classify Home Assistant and wrapper players from endpoint name/entity signals instead of broad raw metadata matches.
+- Reduced false positives for non-speaker endpoints such as `U8K-ULTRA` while keeping speaker and group targets recognized.
+
 ## 0.3.16
 
 - Fixed SendSpin target detection so Home Assistant and sync-group speaker targets are classified from speaker/group traits instead of only literal `sendspin` provider text.

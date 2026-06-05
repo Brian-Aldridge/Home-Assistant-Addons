@@ -41,12 +41,14 @@ def normalize_player(player: dict[str, Any]) -> PlayerRecord:
     provider_name = str(provider).lower() if provider else ""
     raw_text = _flatten_text(player)
     provider_text = f"{provider_name} {player_id} {display_name} {raw_text}".lower()
+    endpoint_text = f"{player_id} {display_name}".lower()
     is_sendspin_candidate = _is_sendspin_candidate(
         provider_name=provider_name,
         player_id=player_id,
         display_name=display_name,
         is_group=is_group,
         provider_text=provider_text,
+        endpoint_text=endpoint_text,
     )
 
     return PlayerRecord(
@@ -66,6 +68,7 @@ def _is_sendspin_candidate(
     display_name: str,
     is_group: bool,
     provider_text: str,
+    endpoint_text: str,
 ) -> bool:
     if is_group or provider_name == "sync_group":
         return True
@@ -74,22 +77,22 @@ def _is_sendspin_candidate(
         return True
 
     if provider_name in {"hass_players", "universal_player"}:
-        if _looks_like_video_endpoint(player_id, display_name, provider_text):
+        if _looks_like_video_endpoint(endpoint_text):
             return False
-        return _looks_like_audio_endpoint(player_id, display_name, provider_text)
+        return _looks_like_audio_endpoint(endpoint_text)
 
     if provider_name == "sendspin":
-        if _looks_like_browser_endpoint(player_id, display_name, provider_text):
+        if _looks_like_browser_endpoint(provider_text):
             return False
         return True
 
     if "sendspin" in provider_text:
-        return not _looks_like_browser_endpoint(player_id, display_name, provider_text)
+        return not _looks_like_browser_endpoint(provider_text)
 
     return False
 
 
-def _looks_like_audio_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+def _looks_like_audio_endpoint(endpoint_text: str) -> bool:
     tokens = {
         "speaker",
         "speakers",
@@ -102,11 +105,10 @@ def _looks_like_audio_endpoint(player_id: str, display_name: str, provider_text:
         "group",
         "synced",
     }
-    candidate_text = f"{player_id} {display_name} {provider_text}".lower()
-    return any(token in candidate_text for token in tokens)
+    return any(token in endpoint_text for token in tokens)
 
 
-def _looks_like_video_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+def _looks_like_video_endpoint(endpoint_text: str) -> bool:
     tokens = {
         " tv",
         "_tv",
@@ -115,12 +117,13 @@ def _looks_like_video_endpoint(player_id: str, display_name: str, provider_text:
         "projector",
         "roku",
         "webos",
+        "ultra",
     }
-    candidate_text = f" {player_id} {display_name} {provider_text}".lower()
+    candidate_text = f" {endpoint_text}"
     return any(token in candidate_text for token in tokens)
 
 
-def _looks_like_browser_endpoint(player_id: str, display_name: str, provider_text: str) -> bool:
+def _looks_like_browser_endpoint(provider_text: str) -> bool:
     tokens = {
         "pwa",
         "browser",
@@ -132,8 +135,7 @@ def _looks_like_browser_endpoint(player_id: str, display_name: str, provider_tex
         "tab",
         "window",
     }
-    candidate_text = f"{player_id} {display_name} {provider_text}".lower()
-    return any(token in candidate_text for token in tokens)
+    return any(token in provider_text for token in tokens)
 
 
 def _flatten_text(value: Any) -> str:
