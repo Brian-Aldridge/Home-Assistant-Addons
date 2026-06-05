@@ -244,6 +244,48 @@ class SendSpinAirPlayBridge:
                 "receivers": receiver_rows,
             }
 
+    async def cleanup_receivers(
+        self,
+        targets: list[AdvertisedTarget],
+        instance_ids: list[str] | None = None,
+        remove_all_candidates: bool = False,
+    ) -> dict[str, list[str]]:
+        async with MusicAssistantClient(
+            self.config.music_assistant_url,
+            self.config.music_assistant_token,
+        ) as client:
+            await client.probe_websocket()
+            players = [normalize_player(item) for item in await client.get_players()]
+            provider_configs = await client.get_provider_configs()
+            choices = self._build_player_choices(players)
+            airplay_providers = [
+                item
+                for item in provider_configs
+                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+            ]
+            receiver_rows = self._build_receiver_rows(airplay_providers, choices, targets)
+            cleanup_candidates = {
+                str(row["instance_id"]): row
+                for row in receiver_rows
+                if bool(row["cleanup_candidate"]) and str(row["instance_id"])
+            }
+            requested_ids = (
+                list(cleanup_candidates.keys())
+                if remove_all_candidates
+                else [x for x in (instance_ids or []) if x]
+            )
+
+            removed: list[str] = []
+            skipped: list[str] = []
+            for instance_id in requested_ids:
+                if instance_id not in cleanup_candidates:
+                    skipped.append(instance_id)
+                    continue
+                await client.remove_provider_config(instance_id)
+                removed.append(instance_id)
+
+            return {"removed": removed, "skipped": skipped}
+
     async def fetch_mdns_interfaces(self) -> list[dict[str, str]]:
         interfaces: list[dict[str, str]] = [{"name": "Automatic", "value": ""}]
         seen: set[str] = set()

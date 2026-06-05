@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.7
+
+- Added safe cleanup actions for AirPlay receiver instances classified as cleanup candidates.
+- Verified and used Music Assistant's `config/providers/remove` API for receiver removal.
+- Added per-row and bulk cleanup actions in the receiver inventory UI.
+
 ## 0.3.6
 
 - Added selected target health status to the add-on UI.

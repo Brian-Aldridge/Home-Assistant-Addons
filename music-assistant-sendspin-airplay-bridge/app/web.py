@@ -25,6 +25,7 @@ def create_app(config: AppConfig, bridge: SendSpinAirPlayBridge) -> web.Applicat
     app.router.add_get("/", handle_index)
     app.router.add_post("/save", handle_save)
     app.router.add_post("/sync", handle_sync)
+    app.router.add_post("/cleanup", handle_cleanup)
     return app
 
 
@@ -37,6 +38,7 @@ async def handle_index(request: web.Request) -> web.Response:
         item.logical_key: item for item in current_targets if item.logical_key
     }
     error_text = ""
+    action_status = html.escape(request.query.get("status", ""))
     try:
         dashboard = await bridge.fetch_dashboard_state(current_targets)
         players = list(dashboard["players"])
@@ -133,6 +135,16 @@ async def handle_index(request: web.Request) -> web.Response:
             f"<td>{html.escape(str(row['resolved_display_name']))}</td>"
             f"<td><code>{html.escape(str(row['mass_player_id']) or '-')}</code></td>"
             f"<td><code>{html.escape(str(row['instance_id']))}</code></td>"
+            "<td>"
+            + (
+                f"<form method='post' action='cleanup' class='inline-form'>"
+                f"<input type='hidden' name='instance_id' value='{html.escape(str(row['instance_id']))}'>"
+                "<button type='submit' class='danger'>Remove</button>"
+                "</form>"
+                if bool(row["cleanup_candidate"]) and str(row["instance_id"])
+                else "<span class='meta'>kept</span>"
+            )
+            + "</td>"
             "</tr>"
         )
 
@@ -145,6 +157,8 @@ async def handle_index(request: web.Request) -> web.Response:
         )
     elif error_text:
         status_html = f"<div class='status error'>Player list failed: {error_text}</div>"
+    if action_status:
+        status_html += f"<div class='status'>{action_status}</div>"
 
     selected_interface = config.mdns_interface or ""
     interface_options = []
@@ -296,6 +310,11 @@ async def handle_index(request: web.Request) -> web.Response:
       color: var(--text-color);
       border: 1px solid var(--border-color);
     }}
+    button.danger {{
+      background: rgba(244, 67, 54, 0.16);
+      color: #ff8f8f;
+      border: 1px solid rgba(244, 67, 54, 0.35);
+    }}
     table {{
       width: 100%;
       border-collapse: collapse;
@@ -392,6 +411,9 @@ async def handle_index(request: web.Request) -> web.Response:
     }}
     .table-wrap {{
       overflow-x: auto;
+    }}
+    .inline-form {{
+      display: inline;
     }}
     .section-stack {{
       display: grid;
@@ -541,6 +563,10 @@ async def handle_index(request: web.Request) -> web.Response:
             <h2>AirPlay receiver inventory</h2>
             <div class="meta">Managed and unmanaged Music Assistant AirPlay Receiver instances. Cleanup candidates are highlighted so you can remove them in Music Assistant if needed.</div>
           </div>
+          <form method="post" action="cleanup" class="inline-form">
+            <input type="hidden" name="cleanup_mode" value="all_candidates">
+            <button type="submit" class="danger">Remove cleanup candidates</button>
+          </form>
         </div>
         <div class="table-wrap">
           <table>
@@ -551,10 +577,11 @@ async def handle_index(request: web.Request) -> web.Response:
                 <th>Resolved player</th>
                 <th>MA player ID</th>
                 <th>Instance ID</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody id="receiver-table">
-              {''.join(receiver_inventory_rows) or "<tr><td colspan='5'>No AirPlay receiver instances found.</td></tr>"}
+              {''.join(receiver_inventory_rows) or "<tr><td colspan='6'>No AirPlay receiver instances found.</td></tr>"}
             </tbody>
           </table>
         </div>
@@ -657,3 +684,26 @@ async def handle_sync(request: web.Request) -> web.Response:
     except Exception as err:
         LOGGER.exception("Manual sync failed: %s", err)
     return web.HTTPFound("./")
+
+
+async def handle_cleanup(request: web.Request) -> web.Response:
+    config: AppConfig = request.app["config"]
+    bridge: SendSpinAirPlayBridge = request.app["bridge"]
+    config.advertised_targets = load_managed_targets()
+    data = await request.post()
+    cleanup_mode = str(data.get("cleanup_mode", "")).strip()
+    instance_id = str(data.get("instance_id", "")).strip()
+    try:
+        result = await bridge.cleanup_receivers(
+            config.advertised_targets,
+            instance_ids=[instance_id] if instance_id else [],
+            remove_all_candidates=(cleanup_mode == "all_candidates"),
+        )
+        message = f"Cleanup removed {len(result['removed'])} receiver(s)"
+        if result["skipped"]:
+            message += f"; skipped {len(result['skipped'])}"
+    except Exception as err:
+        LOGGER.exception("Cleanup failed: %s", err)
+        message = f"Cleanup failed: {err}"
+    from urllib.parse import quote
+    return web.HTTPFound(f"./?status={quote(message)}")

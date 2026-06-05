@@ -114,6 +114,9 @@ class MusicAssistantClient:
             args["instance_id"] = instance_id
         return await self.command("config/providers/save", args)
 
+    async def remove_provider_config(self, instance_id: str) -> Any:
+        return await self.command("config/providers/remove", {"instance_id": instance_id})
+
     async def get_provider_manifests(self) -> list[dict[str, Any]]:
         for command in ("providers/manifests", "config/providers/manifests"):
             try:
