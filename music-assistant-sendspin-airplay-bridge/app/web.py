@@ -38,11 +38,16 @@ async def handle_index(request: web.Request) -> web.Response:
     }
     error_text = ""
     try:
-        players = await bridge.fetch_players()
+        dashboard = await bridge.fetch_dashboard_state(current_targets)
+        players = list(dashboard["players"])
+        target_rows = list(dashboard["targets"])
+        receiver_rows = list(dashboard["receivers"])
         interfaces = await bridge.fetch_mdns_interfaces()
     except Exception as err:
         LOGGER.exception("Failed to load players for UI: %s", err)
         players = []
+        target_rows = []
+        receiver_rows = []
         interfaces = [{"name": "Automatic", "value": ""}]
         error_text = html.escape(str(err))
 
@@ -70,10 +75,18 @@ async def handle_index(request: web.Request) -> web.Response:
         if int(player["duplicate_count"]) > 1:
             duplicate_note = (
                 f"<div class='meta'>Using preferred Music Assistant target. Hidden duplicates: "
-                f"{html.escape(alternate_providers or 'same provider')}</div>"
+                f"{html.escape(alternate_providers or 'same provider')}.</div>"
+                f"<div class='meta advanced-only'>Preferred reason: {html.escape(str(player['preferred_reason']))}. "
+                f"Alternate IDs: {html.escape(', '.join(str(v) for v in player['alternate_player_ids']) or 'none')}.</div>"
             )
         rows.append(
-            "<tr>"
+            "<tr class='player-row'"
+            f" data-name='{html.escape(display_name.lower())}'"
+            f" data-provider='{html.escape(str(player['provider']).lower())}'"
+            f" data-selected='{'true' if existing and existing.enabled else 'false'}'"
+            f" data-group='{'true' if player['is_group'] else 'false'}'"
+            f" data-duplicate='{'true' if int(player['duplicate_count']) > 1 else 'false'}'"
+            ">"
             f"<td data-label='Enable'><input type='checkbox' name='enabled::{html.escape(logical_key)}' {checked}></td>"
             f"<td data-label='Music Assistant player or group' class='player-col'>{html.escape(display_name)}<div class='meta'>{html.escape(player_id)}</div>{duplicate_note}</td>"
             f"<td data-label='Provider'>{html.escape(str(player['provider']))}</td>"
@@ -82,11 +95,53 @@ async def handle_index(request: web.Request) -> web.Response:
             "</tr>"
         )
 
+    target_summary_rows: list[str] = []
+    for row in target_rows:
+        status = str(row["status"])
+        status_label = {
+            "ready": "ready",
+            "receiver_missing": "receiver missing",
+            "player_missing": "player missing",
+        }.get(status, status)
+        status_badge = f"<span class='badge status-{html.escape(status)}'>{html.escape(status_label)}</span>"
+        target_summary_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(row['name']))}</td>"
+            f"<td>{status_badge}</td>"
+            f"<td>{html.escape(str(row['resolved_display_name']))}</td>"
+            f"<td><code>{html.escape(str(row['resolved_player_id']))}</code></td>"
+            f"<td><code>{html.escape(str(row['receiver_instance_id']) or '-')}</code></td>"
+            "</tr>"
+        )
+
+    receiver_inventory_rows: list[str] = []
+    cleanup_count = 0
+    for row in receiver_rows:
+        if bool(row["cleanup_candidate"]):
+            cleanup_count += 1
+        flags = " ".join(
+            f"<span class='badge'>{html.escape(str(flag))}</span>"
+            for flag in row["status_flags"]
+        )
+        receiver_inventory_rows.append(
+            "<tr class='receiver-row'"
+            f" data-managed='{'true' if row['managed'] else 'false'}'"
+            f" data-cleanup='{'true' if row['cleanup_candidate'] else 'false'}'"
+            ">"
+            f"<td>{html.escape(str(row['airplay_name']))}</td>"
+            f"<td>{flags}</td>"
+            f"<td>{html.escape(str(row['resolved_display_name']))}</td>"
+            f"<td><code>{html.escape(str(row['mass_player_id']) or '-')}</code></td>"
+            f"<td><code>{html.escape(str(row['instance_id']))}</code></td>"
+            "</tr>"
+        )
+
     status_html = ""
     if summary:
         status_html = (
             f"<div class='status'>Last sync: configured {summary.configured_targets}, "
-            f"enabled {summary.enabled_targets}, updated {summary.created_or_updated}.</div>"
+            f"enabled {summary.enabled_targets}, updated {summary.created_or_updated}. "
+            f"Cleanup candidates: {cleanup_count}.</div>"
         )
     elif error_text:
         status_html = f"<div class='status error'>Player list failed: {error_text}</div>"
@@ -156,6 +211,17 @@ async def handle_index(request: web.Request) -> web.Response:
       padding: 20px;
       margin-top: 20px;
     }}
+    .panel-header {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }}
+    .panel-header h2 {{
+      margin: 0;
+      font-size: 1.1rem;
+    }}
     .status {{
       margin-top: 16px;
       padding: 12px 14px;
@@ -173,6 +239,12 @@ async def handle_index(request: web.Request) -> web.Response:
       grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
       margin-bottom: 20px;
+    }}
+    .filters {{
+      display: grid;
+      grid-template-columns: minmax(220px, 1.6fr) repeat(3, minmax(160px, 1fr));
+      gap: 12px;
+      margin: 16px 0 20px;
     }}
     .field label {{
       display: block;
@@ -196,6 +268,11 @@ async def handle_index(request: web.Request) -> web.Response:
     input[type=text]:focus, select:focus {{
       border-color: var(--accent-color);
       box-shadow: 0 0 0 1px var(--accent-color);
+    }}
+    code {{
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 12px;
+      color: var(--secondary-text);
     }}
     .toolbar {{
       display: flex;
@@ -261,8 +338,45 @@ async def handle_index(request: web.Request) -> web.Response:
       color: var(--secondary-text);
       background: var(--muted-bg);
     }}
+    .status-ready {{
+      color: #7bd88f;
+      border-color: rgba(123,216,143,0.35);
+    }}
+    .status-receiver_missing, .status-player_missing {{
+      color: #ffb86c;
+      border-color: rgba(255,184,108,0.35);
+    }}
     .player-col {{
       font-weight: 600;
+    }}
+    .advanced-only {{
+      display: none;
+    }}
+    .show-advanced .advanced-only {{
+      display: block;
+    }}
+    .metrics {{
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-top: 20px;
+    }}
+    .metric {{
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--muted-bg);
+    }}
+    .metric-label {{
+      color: var(--secondary-text);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .metric-value {{
+      margin-top: 6px;
+      font-size: 20px;
+      font-weight: 700;
     }}
     .checkbox-cell {{
       width: 88px;
@@ -279,6 +393,11 @@ async def handle_index(request: web.Request) -> web.Response:
     .table-wrap {{
       overflow-x: auto;
     }}
+    .section-stack {{
+      display: grid;
+      gap: 20px;
+      margin-top: 20px;
+    }}
     input[type=checkbox] {{
       width: 18px;
       height: 18px;
@@ -288,6 +407,7 @@ async def handle_index(request: web.Request) -> web.Response:
     @media (max-width: 900px) {{
       body {{ padding: 16px; }}
       h1 {{ font-size: 1.7rem; }}
+      .filters {{ grid-template-columns: 1fr; }}
       table, thead, tbody, th, td, tr {{ display: block; }}
       thead {{ display: none; }}
       tbody tr {{
@@ -314,11 +434,23 @@ async def handle_index(request: web.Request) -> web.Response:
   </style>
 </head>
 <body>
-  <div class="shell">
+  <div class="shell" id="app-shell">
     <h1>SendSpin AirPlay Bridge</h1>
     <p>Music Assistant server: {html.escape(config.music_assistant_url)}</p>
     {status_html}
+    <div class="metrics">
+      <div class="metric"><div class="metric-label">Visible targets</div><div class="metric-value">{len(players)}</div></div>
+      <div class="metric"><div class="metric-label">Selected targets</div><div class="metric-value">{len(target_rows)}</div></div>
+      <div class="metric"><div class="metric-label">AirPlay receivers</div><div class="metric-value">{len(receiver_rows)}</div></div>
+      <div class="metric"><div class="metric-label">Cleanup candidates</div><div class="metric-value">{cleanup_count}</div></div>
+    </div>
     <form method="post" action="save" class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Available targets</h2>
+          <div class="meta">Search, filter, and select one stable target per logical speaker or group.</div>
+        </div>
+      </div>
       <div class="settings">
         <div class="field">
           <label for="mdns_interface">mDNS interface</label>
@@ -326,6 +458,36 @@ async def handle_index(request: web.Request) -> web.Response:
             {''.join(interface_options)}
           </select>
           <div class="meta">Use Automatic unless you need to pin multicast traffic to a specific interface.</div>
+        </div>
+      </div>
+      <div class="filters">
+        <div class="field">
+          <label for="search">Search targets</label>
+          <input type="text" id="search" placeholder="Filter by name or provider">
+        </div>
+        <div class="field">
+          <label for="filter-type">Type</label>
+          <select id="filter-type">
+            <option value="all">All targets</option>
+            <option value="selected">Selected only</option>
+            <option value="groups">Groups only</option>
+            <option value="duplicates">Deduped only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="show-advanced">Advanced</label>
+          <select id="show-advanced">
+            <option value="off">Hide details</option>
+            <option value="on">Show details</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="receiver-filter">Receiver inventory</label>
+          <select id="receiver-filter">
+            <option value="all">All receivers</option>
+            <option value="cleanup">Cleanup candidates</option>
+            <option value="managed">Managed only</option>
+          </select>
         </div>
       </div>
       <div class="toolbar">
@@ -348,10 +510,103 @@ async def handle_index(request: web.Request) -> web.Response:
         </table>
       </div>
     </form>
+    <div class="section-stack">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>Selected target health</h2>
+            <div class="meta">Current mapping and receiver state for the targets this add-on manages.</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>AirPlay target</th>
+                <th>Status</th>
+                <th>Resolved MA target</th>
+                <th>Player ID</th>
+                <th>Receiver instance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {''.join(target_summary_rows) or "<tr><td colspan='5'>No targets selected yet.</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>AirPlay receiver inventory</h2>
+            <div class="meta">Managed and unmanaged Music Assistant AirPlay Receiver instances. Cleanup candidates are highlighted so you can remove them in Music Assistant if needed.</div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>AirPlay name</th>
+                <th>Status</th>
+                <th>Resolved player</th>
+                <th>MA player ID</th>
+                <th>Instance ID</th>
+              </tr>
+            </thead>
+            <tbody id="receiver-table">
+              {''.join(receiver_inventory_rows) or "<tr><td colspan='5'>No AirPlay receiver instances found.</td></tr>"}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
     <form method="post" action="sync" class="toolbar">
       <button type="submit" class="secondary">Run sync now</button>
     </form>
   </div>
+  <script>
+    const shell = document.getElementById('app-shell');
+    const searchInput = document.getElementById('search');
+    const filterType = document.getElementById('filter-type');
+    const advancedToggle = document.getElementById('show-advanced');
+    const receiverFilter = document.getElementById('receiver-filter');
+
+    function applyPlayerFilters() {{
+      const query = (searchInput.value || '').trim().toLowerCase();
+      const type = filterType.value;
+      const showAdvanced = advancedToggle.value === 'on';
+      shell.classList.toggle('show-advanced', showAdvanced);
+
+      document.querySelectorAll('.player-row').forEach((row) => {{
+        const haystack = `${{row.dataset.name}} ${{row.dataset.provider}}`;
+        const matchesQuery = !query || haystack.includes(query);
+        const matchesType =
+          type === 'all' ||
+          (type === 'selected' && row.dataset.selected === 'true') ||
+          (type === 'groups' && row.dataset.group === 'true') ||
+          (type === 'duplicates' && row.dataset.duplicate === 'true');
+        row.style.display = matchesQuery && matchesType ? '' : 'none';
+      }});
+    }}
+
+    function applyReceiverFilters() {{
+      const filter = receiverFilter.value;
+      document.querySelectorAll('.receiver-row').forEach((row) => {{
+        const visible =
+          filter === 'all' ||
+          (filter === 'cleanup' && row.dataset.cleanup === 'true') ||
+          (filter === 'managed' && row.dataset.managed === 'true');
+        row.style.display = visible ? '' : 'none';
+      }});
+    }}
+
+    searchInput.addEventListener('input', applyPlayerFilters);
+    filterType.addEventListener('change', applyPlayerFilters);
+    advancedToggle.addEventListener('change', applyPlayerFilters);
+    receiverFilter.addEventListener('change', applyReceiverFilters);
+    applyPlayerFilters();
+    applyReceiverFilters();
+  </script>
 </body>
 </html>"""
     return web.Response(text=body, content_type="text/html")

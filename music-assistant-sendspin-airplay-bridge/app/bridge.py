@@ -33,6 +33,7 @@ class PlayerChoice:
     duplicate_count: int
     alternate_player_ids: list[str]
     alternate_providers: list[str]
+    preferred_reason: str
 
 
 class SendSpinAirPlayBridge:
@@ -176,9 +177,72 @@ class SendSpinAirPlayBridge:
                     "duplicate_count": choice.duplicate_count,
                     "alternate_player_ids": choice.alternate_player_ids,
                     "alternate_providers": choice.alternate_providers,
+                    "preferred_reason": choice.preferred_reason,
                 }
                 for choice in choices
             ]
+
+    async def fetch_dashboard_state(
+        self,
+        targets: list[AdvertisedTarget],
+    ) -> dict[str, object]:
+        async with MusicAssistantClient(
+            self.config.music_assistant_url,
+            self.config.music_assistant_token,
+        ) as client:
+            await client.probe_websocket()
+            players = [normalize_player(item) for item in await client.get_players()]
+            provider_configs = await client.get_provider_configs()
+            choices = self._build_player_choices(players)
+            airplay_providers = [
+                item
+                for item in provider_configs
+                if item.get("provider_domain") == AIRPLAY_PROVIDER_DOMAIN
+            ]
+            player_index = {player.player_id: player for player in players}
+            choice_index = {choice.logical_key: choice for choice in choices}
+
+            choice_rows = [
+                {
+                    "logical_key": choice.logical_key,
+                    "player_id": choice.player_id,
+                    "display_name": choice.display_name,
+                    "provider": choice.provider,
+                    "is_group": choice.is_group,
+                    "is_sendspin_candidate": choice.is_sendspin_candidate,
+                    "duplicate_count": choice.duplicate_count,
+                    "alternate_player_ids": choice.alternate_player_ids,
+                    "alternate_providers": choice.alternate_providers,
+                    "preferred_reason": choice.preferred_reason,
+                }
+                for choice in choices
+            ]
+
+            target_rows: list[dict[str, object]] = []
+            for target in targets:
+                resolved = self._resolve_target(target, choices, player_index, choice_index)
+                player = player_index.get(resolved.ma_player_id)
+                match = match_existing_provider(resolved, airplay_providers)
+                target_rows.append(
+                    {
+                        "logical_key": resolved.logical_key or "",
+                        "name": resolved.name,
+                        "requested_player_id": target.ma_player_id,
+                        "resolved_player_id": resolved.ma_player_id,
+                        "resolved_display_name": player.display_name if player else "Missing player",
+                        "resolved_provider": player.provider if player and player.provider else "unknown",
+                        "is_group": bool(player and player.is_group),
+                        "status": "ready" if player and match.instance_id else ("receiver_missing" if player else "player_missing"),
+                        "receiver_instance_id": match.instance_id or "",
+                    }
+                )
+
+            receiver_rows = self._build_receiver_rows(airplay_providers, choices, targets)
+            return {
+                "players": choice_rows,
+                "targets": target_rows,
+                "receivers": receiver_rows,
+            }
 
     async def fetch_mdns_interfaces(self) -> list[dict[str, str]]:
         interfaces: list[dict[str, str]] = [{"name": "Automatic", "value": ""}]
@@ -220,6 +284,7 @@ class SendSpinAirPlayBridge:
                     duplicate_count=len(cluster_players),
                     alternate_player_ids=alternates,
                     alternate_providers=alternate_providers,
+                    preferred_reason=self._preferred_reason(primary),
                 )
             )
         choices.sort(key=lambda item: item.display_name.lower())
@@ -317,3 +382,80 @@ class SendSpinAirPlayBridge:
     def _normalize_name(self, value: str) -> str:
         normalized = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
         return normalized or "unnamed"
+
+    def _preferred_reason(self, player) -> str:
+        provider = (player.provider or "").lower()
+        if player.is_group or provider == "sync_group":
+            return "preferred group target"
+        if provider == "hass_players":
+            return "preferred Home Assistant entity"
+        if provider == "universal_player":
+            return "wrapper fallback"
+        return "preferred native target"
+
+    def _build_receiver_rows(
+        self,
+        provider_configs: list[dict[str, object]],
+        choices: list[PlayerChoice],
+        targets: list[AdvertisedTarget],
+    ) -> list[dict[str, object]]:
+        choice_by_player_id = {choice.player_id: choice for choice in choices}
+        selected_keys = {target.logical_key for target in targets if target.logical_key}
+        selected_player_ids = {target.ma_player_id for target in targets}
+        rows: list[dict[str, object]] = []
+        seen_pairs: dict[tuple[str, str], int] = {}
+
+        for provider in provider_configs:
+            values = provider.get("values") or {}
+            mass_player_id = str(values.get("mass_player_id") or "")
+            airplay_name = str(values.get("airplay_name") or provider.get("name") or "")
+            choice = choice_by_player_id.get(mass_player_id)
+            matched_target = next(
+                (
+                    target
+                    for target in targets
+                    if target.ma_player_id == mass_player_id
+                    or (target.logical_key and choice and target.logical_key == choice.logical_key)
+                ),
+                None,
+            )
+            status_flags: list[str] = []
+            if matched_target:
+                status_flags.append("managed")
+            else:
+                status_flags.append("unmanaged")
+            if choice:
+                status_flags.append("resolved")
+            else:
+                status_flags.append("stale")
+
+            pair = (airplay_name.lower(), mass_player_id.lower())
+            seen_pairs[pair] = seen_pairs.get(pair, 0) + 1
+
+            rows.append(
+                {
+                    "instance_id": str(provider.get("instance_id") or ""),
+                    "airplay_name": airplay_name,
+                    "mass_player_id": mass_player_id,
+                    "resolved_display_name": choice.display_name if choice else "Missing player",
+                    "resolved_provider": choice.provider if choice else "unknown",
+                    "enabled": bool(values.get("enabled", True)),
+                    "status_flags": status_flags,
+                    "managed": bool(matched_target),
+                    "cleanup_candidate": (not matched_target) or (choice is None),
+                    "selected": bool(
+                        matched_target
+                        or (choice and choice.logical_key in selected_keys)
+                        or mass_player_id in selected_player_ids
+                    ),
+                }
+            )
+
+        for row in rows:
+            pair = (str(row["airplay_name"]).lower(), str(row["mass_player_id"]).lower())
+            if seen_pairs.get(pair, 0) > 1:
+                row["status_flags"] = list(row["status_flags"]) + ["duplicate"]
+                row["cleanup_candidate"] = True
+
+        rows.sort(key=lambda item: (not bool(item["selected"]), not bool(item["managed"]), str(item["airplay_name"]).lower()))
+        return rows

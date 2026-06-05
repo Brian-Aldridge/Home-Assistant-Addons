@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6
+
+- Added selected target health status to the add-on UI.
+- Added AirPlay receiver inventory with managed/unmanaged and cleanup-candidate visibility.
+- Added client-side search, filtering, and advanced duplicate inspection controls.
+- Added dashboard counts for visible targets, selected targets, receivers, and cleanup candidates.
+
 ## 0.3.5
 
 - Deduplicated duplicate-looking Music Assistant players in the add-on UI using logical speaker/group targets.
