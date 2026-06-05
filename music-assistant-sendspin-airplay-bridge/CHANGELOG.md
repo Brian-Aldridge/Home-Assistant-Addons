@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- Bumped the add-on version so Home Assistant can install the new release.
+- Added clearer repository and add-on documentation.
+- Documented the ingress-based speaker management flow and update process.
+
 ## 0.2.0
 
 - Added an add-on management UI for selecting Music Assistant players and groups.

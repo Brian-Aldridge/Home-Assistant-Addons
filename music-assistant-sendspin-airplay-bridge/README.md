@@ -84,6 +84,21 @@ That avoids manual `player_id` entry. For grouped playback, select the Music Ass
 9. Select speakers/groups from the list, set names, and save.
 10. Run sync and inspect logs if needed.
 
+## Updating
+
+Home Assistant only installs a new build when the add-on `version` in `config.yaml` increases.
+
+Current release metadata:
+
+- add-on version: `0.3.0`
+- add-on slug: `music_assistant_sendspin_airplay_bridge`
+
+If you change code and Home Assistant still refuses to update:
+
+1. confirm the version changed in `config.yaml`;
+2. refresh the custom add-on repository in Home Assistant;
+3. if needed, remove and re-add the repository so Home Assistant drops stale metadata.
+
 ## Troubleshooting
 
 ### mDNS / AirPlay target not visible
