@@ -113,3 +113,13 @@ def save_managed_targets(
         for item in targets
     ]
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def save_runtime_overrides(config: AppConfig, path: Path = OPTIONS_PATH) -> None:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["music_assistant_url"] = config.music_assistant_url
+    raw["music_assistant_token"] = config.music_assistant_token or ""
+    raw["log_level"] = config.log_level
+    raw["mdns_interface"] = config.mdns_interface or ""
+    raw["airplay_backend"] = config.airplay_backend
+    path.write_text(json.dumps(raw, indent=2), encoding="utf-8")

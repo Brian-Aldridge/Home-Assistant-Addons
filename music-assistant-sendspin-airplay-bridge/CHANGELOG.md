@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.2
+
+- Restyled the ingress UI to follow Home Assistant theme colors and card patterns.
+- Improved responsive behavior for the target table on narrower viewports.
+
+## 0.3.1
+
+- Fixed the ingress management UI form actions so save/sync work behind Home Assistant ingress.
+- Added an mDNS interface selector to the add-on UI.
+- Persisted the selected mDNS interface into the add-on runtime options.
+
 ## 0.3.0
 
 - Bumped the add-on version so Home Assistant can install the new release.

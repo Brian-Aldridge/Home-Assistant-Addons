@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import socket
 from dataclasses import dataclass
 
 from .airplay import AIRPLAY_PROVIDER_DOMAIN, match_existing_provider, normalize_player
@@ -150,6 +151,16 @@ class SendSpinAirPlayBridge:
                 }
                 for player in players
             ]
+
+    async def fetch_mdns_interfaces(self) -> list[dict[str, str]]:
+        interfaces: list[dict[str, str]] = [{"name": "Automatic", "value": ""}]
+        seen: set[str] = set()
+        for _, name in socket.if_nameindex():
+            if name in seen:
+                continue
+            seen.add(name)
+            interfaces.append({"name": name, "value": name})
+        return interfaces
 
     @property
     def last_summary(self) -> SyncSummary | None:
