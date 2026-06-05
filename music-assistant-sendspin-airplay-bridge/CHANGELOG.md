@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.15
+
+- Fixed dashboard rendering after receiver inventory refactors by removing a stale `airplay_providers` reference.
+- Ensured dashboard errors remain visible alongside the last sync summary instead of silently collapsing to empty tables.
+
 ## 0.3.14
 
 - Added per-instance cleanup logging so failed AirPlay receiver removals include the exact provider instance ID.

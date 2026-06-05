@@ -247,7 +247,7 @@ class SendSpinAirPlayBridge:
             for target in targets:
                 resolved = self._resolve_target(target, choices, player_index, choice_index)
                 player = player_index.get(resolved.ma_player_id)
-                match = match_existing_provider(resolved, airplay_providers)
+                match = match_existing_provider(resolved, provider_configs)
                 target_rows.append(
                     {
                         "logical_key": resolved.logical_key or "",

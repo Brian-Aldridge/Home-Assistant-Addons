@@ -1,5 +1,5 @@
 name: "Music Assistant SendSpin AirPlay Bridge"
-version: "0.3.14"
+version: "0.3.15"
 slug: "music_assistant_sendspin_airplay_bridge"
 description: "Manage Music Assistant AirPlay Receiver targets for selected SendSpin players and groups."
 arch:

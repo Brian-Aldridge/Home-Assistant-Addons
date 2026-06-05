@@ -156,8 +156,8 @@ async def handle_index(request: web.Request) -> web.Response:
             f"enabled {summary.enabled_targets}, updated {summary.created_or_updated}. "
             f"Cleanup candidates: {cleanup_count}.</div>"
         )
-    elif error_text:
-        status_html = f"<div class='status error'>Player list failed: {error_text}</div>"
+    if error_text:
+        status_html += f"<div class='status error'>Player list failed: {error_text}</div>"
     if action_status:
         status_html += f"<div class='status'>{action_status}</div>"
 
